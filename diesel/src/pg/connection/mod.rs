@@ -167,6 +167,7 @@ impl Connection for PgConnection {
     type TransactionManager = AnsiTransactionManager;
 
     fn establish(database_url: &str) -> ConnectionResult<PgConnection> {
+        println!("------------------------------- establish -------------------------------");
         RawConnection::establish(database_url).and_then(|raw_conn| {
             let mut conn = PgConnection {
                 connection_and_transaction_manager: ConnectionAndTransactionManager {
@@ -187,12 +188,39 @@ impl Connection for PgConnection {
     {
         update_transaction_manager_status(
             self.with_prepared_query(source, |query, params, conn| {
+                println!("+ execute_returning_count: {:?}", conn.transaction_state);
                 let res = query
                     .execute(&mut conn.raw_connection, &params, false)
                     .map(|r| r.rows_affected());
+                // ORIGINAL
                 // according to https://www.postgresql.org/docs/current/libpq-async.html
                 // `PQgetResult` needs to be called till a null pointer is returned
+                // TODO RRP
+                // DO we require this?
+                // println!("\tmod::START [{}] CLEAN", conn.raw_connection.unique_id);
+                println!("==== cleaning connection ====");
                 while conn.raw_connection.get_next_result()?.is_some() {}
+                // println!("\tmod::END   [{}] CLEAN", conn.raw_connection.unique_id);
+
+                // let mut flag = true;
+                // println!("\torg::START [{}] CLEAN", conn.raw_connection.unique_id);
+                // while flag {
+                //     let result = conn.raw_connection.get_next_result();
+                //     match result {
+                //         Ok(result) => {
+                //             match result {
+                //                 Some(result) => println!("\t\tResult: {:?}", result),
+                //                 None => {
+                //                     flag = false;
+                //                     println!("\t\tEmpty")
+                //                 }
+                //             }
+                //         },
+                //         Err(e) => println!("\t\tError: {:?}", e)
+                //     }
+                // }
+                // println!("\torg::END   [{}] CLEAN", conn.raw_connection.unique_id);
+
                 res
             }),
             &mut self.connection_and_transaction_manager,
@@ -219,6 +247,7 @@ where
         T: Query + QueryFragment<Self::Backend> + QueryId + 'query,
         Self::Backend: QueryMetadata<T::SqlType>,
     {
+        println!("+ load");
         self.with_prepared_query(&source, |stmt, params, conn| {
             use self::private::PgLoadingMode;
             let result = stmt.execute(&mut conn.raw_connection, &params, Self::USE_ROW_BY_ROW_MODE);
@@ -342,6 +371,7 @@ impl PgConnection {
     }
 
     fn set_config_options(&mut self) -> QueryResult<()> {
+        // TODO RRP initial `execute_returning_count` calls.
         crate::sql_query("SET TIME ZONE 'UTC'").execute(self)?;
         crate::sql_query("SET CLIENT_ENCODING TO 'UTF8'").execute(self)?;
         self.connection_and_transaction_manager

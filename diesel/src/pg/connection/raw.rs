@@ -7,6 +7,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw as libc;
 use std::ptr::NonNull;
 use std::{ptr, str};
+use rand::{RngCore, thread_rng};
 
 use crate::result::*;
 
@@ -14,6 +15,7 @@ use super::result::PgResult;
 
 #[allow(missing_debug_implementations, missing_copy_implementations)]
 pub(super) struct RawConnection {
+    pub unique_id: u32,
     internal_connection: NonNull<PGconn>,
 }
 
@@ -26,7 +28,9 @@ impl RawConnection {
         match connection_status {
             ConnStatusType::CONNECTION_OK => {
                 let connection_ptr = unsafe { NonNull::new_unchecked(connection_ptr) };
+                let mut rng = thread_rng();
                 Ok(RawConnection {
+                    unique_id: rng.next_u32(),
                     internal_connection: connection_ptr,
                 })
             }
@@ -72,6 +76,35 @@ impl RawConnection {
         param_formats: *const libc::c_int,
         result_format: libc::c_int,
     ) -> QueryResult<()> {
+        // TODO RRP
+        // while self.get_next_result()?.is_some() {}
+
+        // println!("\traw::START [{}] CLEAN", self.unique_id);
+        // UNCOMMENT FOLLOWING LINE TO GET IT WORKING!
+        // while self.get_next_result()?.is_some() {}
+        // println!("\traw::END   [{}] CLEAN", self.unique_id);
+
+        // let mut flag = true;
+        // println!("\traw::START [{}] CLEAN", self.unique_id);
+        // while flag {
+        //     let result = self.get_next_result();
+        //     match result {
+        //         Ok(result) => {
+        //             match result {
+        //                 Some(result) => println!("\t\tResult: {:?}", result),
+        //                 None => {
+        //                     flag = false;
+        //                     println!("\t\tEmpty")
+        //                 }
+        //             }
+        //         },
+        //         Err(e) => println!("\t\tError: {:?}", e)
+        //     }
+        // }
+        // println!("\traw::END   [{}] CLEAN", self.unique_id);
+
+        println!("+++ send_query_prepared = using connection [{}] for PQsendQueryPrepared.", self.unique_id);
+
         let res = PQsendQueryPrepared(
             self.internal_connection.as_ptr(),
             stmt_name,
@@ -84,9 +117,12 @@ impl RawConnection {
         if res == 1 {
             Ok(())
         } else {
+            let status = self.get_status();
+            let error = self.last_error_message();
+            let message = format!("2.[{:?}] {}", status, error);
             Err(Error::DatabaseError(
                 DatabaseErrorKind::UnableToSendCommand,
-                Box::new(self.last_error_message()),
+                Box::new(message),
             ))
         }
     }
@@ -116,6 +152,7 @@ impl RawConnection {
         unsafe { PQstatus(self.internal_connection.as_ptr()) }
     }
 
+    // TODO RRP
     pub(crate) fn get_next_result(&self) -> Result<Option<PgResult>, Error> {
         let res = unsafe { PQgetResult(self.internal_connection.as_ptr()) };
         if res.is_null() {
@@ -171,6 +208,7 @@ pub(super) type NoticeProcessor =
 
 impl Drop for RawConnection {
     fn drop(&mut self) {
+        println!("## diesel::drop [{}] ##", self.unique_id);
         unsafe { PQfinish(self.internal_connection.as_ptr()) };
     }
 }
@@ -189,6 +227,7 @@ fn last_error_message(conn: *const PGconn) -> String {
 ///
 /// If `Unique` is ever stabilized, we should use it here.
 #[allow(missing_debug_implementations)]
+#[derive(Debug)]
 pub(super) struct RawResult(NonNull<PGresult>);
 
 unsafe impl Send for RawResult {}
@@ -198,9 +237,12 @@ impl RawResult {
     #[allow(clippy::new_ret_no_self)]
     fn new(ptr: *mut PGresult, conn: &RawConnection) -> QueryResult<Self> {
         NonNull::new(ptr).map(RawResult).ok_or_else(|| {
+            let status = conn.get_status();
+            let error = conn.last_error_message();
+            let message = format!("1.[{:?}] {}", status, error);
             Error::DatabaseError(
                 DatabaseErrorKind::UnableToSendCommand,
-                Box::new(conn.last_error_message()),
+                Box::new(message),
             )
         })
     }

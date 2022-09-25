@@ -95,6 +95,8 @@ pub trait ExecuteDsl<Conn: Connection<Backend = DB>, DB: Backend = <Conn as Conn
 
 use crate::result::Error;
 
+// static mut N: i32 = 1;
+
 impl<Conn, DB, T> ExecuteDsl<Conn, DB> for T
 where
     Conn: Connection<Backend = DB>,
@@ -102,6 +104,13 @@ where
     T: QueryFragment<DB> + QueryId,
 {
     fn execute(query: T, conn: &mut Conn) -> Result<usize, Error> {
+        println!("ExecuteDsl");
+        // unsafe {
+        //     if N == 4 {
+        //         panic!("let it crash!");
+        //     }
+        //     N += 1;
+        // }
         conn.execute_returning_count(&query)
     }
 }

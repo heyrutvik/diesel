@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 use std::os::raw as libc;
 use std::rc::Rc;
 use std::{slice, str};
+use std::fmt::{Debug, Formatter};
 
 use super::raw::{RawConnection, RawResult};
 use super::row::PgRow;
@@ -21,6 +22,12 @@ pub struct PgResult {
     // as we cannot put a correct lifetime here
     // The value is valid as long as we haven't freed `RawResult`
     column_name_map: OnceCell<Vec<Option<*const str>>>,
+}
+
+impl Debug for PgResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "internal_result: {:?},\ncolumn_count: {},\nrow_count: {}", self.internal_result, self.column_count, self.row_count)
+    }
 }
 
 impl PgResult {

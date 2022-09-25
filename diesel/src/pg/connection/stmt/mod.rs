@@ -1,6 +1,7 @@
 extern crate pq_sys;
 
 use std::ffi::CString;
+use std::ops::Deref;
 use std::os::raw as libc;
 use std::ptr;
 
@@ -10,6 +11,7 @@ use crate::result::QueryResult;
 
 use super::raw::RawConnection;
 
+#[derive(Debug)]
 pub(crate) struct Statement {
     name: CString,
     param_formats: Vec<libc::c_int>,
@@ -35,6 +37,15 @@ impl Statement {
             .map(|data| data.as_ref().map(|d| d.len() as libc::c_int).unwrap_or(0))
             .collect::<Vec<_>>();
         unsafe {
+
+            let param_data_1 = param_data.clone().deref().to_vec().into_iter().map(|value| {
+                match value {
+                    Some(v) => String::from_utf8_lossy(&*v).to_ascii_lowercase(),
+                    None => String::from("")
+                }
+            }).collect::<Vec<String>>();
+
+            println!("++ execute = {{self.name: {:?}, param_data: {:?}}}", self, param_data_1);
             raw_connection.send_query_prepared(
                 self.name.as_ptr(),
                 params_pointer.len() as libc::c_int,
