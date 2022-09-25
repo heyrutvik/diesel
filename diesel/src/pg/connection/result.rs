@@ -34,6 +34,7 @@ impl PgResult {
     #[allow(clippy::new_ret_no_self)]
     pub(super) fn new(internal_result: RawResult, conn: &RawConnection) -> QueryResult<Self> {
         let result_status = unsafe { PQresultStatus(internal_result.as_ptr()) };
+        println!("++++++++++++++++ result_status: {:?}", result_status);
         match result_status {
             ExecStatusType::PGRES_SINGLE_TUPLE
             | ExecStatusType::PGRES_COMMAND_OK
@@ -55,6 +56,9 @@ impl PgResult {
                 ))
             }
             _ => {
+                // TODO RRP https://github.com/diesel-rs/diesel/issues/3342#issuecomment-1257263978
+                while conn.get_next_result()?.is_some() {}
+                
                 let mut error_kind =
                     match get_result_field(internal_result.as_ptr(), ResultField::SqlState) {
                         Some(error_codes::UNIQUE_VIOLATION) => DatabaseErrorKind::UniqueViolation,
@@ -84,6 +88,7 @@ impl PgResult {
                 if conn_status == ConnStatusType::CONNECTION_BAD {
                     error_kind = DatabaseErrorKind::ClosedConnection;
                 }
+                println!("DatabaseError({:?}, {:?})", error_kind, error_information);
                 Err(Error::DatabaseError(error_kind, error_information))
             }
         }
@@ -181,6 +186,7 @@ impl PgResult {
     }
 }
 
+#[derive(Debug)]
 struct PgErrorInformation(RawResult);
 
 impl DatabaseErrorInformation for PgErrorInformation {
